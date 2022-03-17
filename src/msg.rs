@@ -1,10 +1,16 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use cw721_base::InstantiateMsg as CW721InstantiateMsg;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub count: i32,
+    pub base_token_uri: String,
+    pub num_tokens: u32,
+    pub cw721_code_id: u64,
+    pub cw721_instantiate_msg: CW721InstantiateMsg,
 }
+
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
