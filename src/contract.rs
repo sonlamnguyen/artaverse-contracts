@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, StdResult, WasmMsg, ReplyOn, Reply, Addr, Response, SubMsg};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, StdResult, WasmMsg, ReplyOn, Reply, Addr, Response, SubMsg, Order, Empty, CosmosMsg};
 use cw2::set_contract_version;
-use cw721_base::InstantiateMsg as Cw721InstantiateMsg;
+use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as Cw721ExecuteMsg};
 use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
@@ -84,29 +84,28 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => try_increment(deps),
-        ExecuteMsg::Reset { count } => try_reset(deps, info, count),
+        ExecuteMsg::Mint { token_id } => execute_mint_sender(deps, info, token_id),
+        ExecuteMsg::MintTo { token_id, recipient } => execute_mint_to(deps, info, recipient, token_id),
     }
 }
 
-pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        state.count += 1;
-        Ok(state)
-    })?;
-
-    Ok(Response::new().add_attribute("method", "try_increment"))
+pub fn execute_mint_sender(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_id: u32,
+) -> Result<Response, ContractError> {
+    let recipient = info.sender.clone();
+    _execute_mint(deps, info, Some(recipient), Some(token_id))
 }
 
-pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(Response::new().add_attribute("method", "reset"))
+pub fn execute_mint_to(
+    deps: DepsMut,
+    info: MessageInfo,
+    recipient: String,
+    token_id: u32,
+) -> Result<Response, ContractError> {
+    let recipient = deps.api.addr_validate(&recipient)?;
+    _execute_mint(deps, info, Some(recipient), Some(token_id))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -119,6 +118,75 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 fn query_count(deps: Deps) -> StdResult<CountResponse> {
     let state = STATE.load(deps.storage)?;
     Ok(CountResponse { count: state.count })
+}
+
+fn _execute_mint(
+    deps: DepsMut,
+    info: MessageInfo,
+    recipient: Option<Addr>,
+    token_id: Option<u32>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let cw721_address = CW721_ADDRESS.load(deps.storage)?;
+
+    let recipient_addr = match recipient {
+        Some(some_recipient) => some_recipient,
+        None => info.sender.clone(),
+    };
+
+    let mintable_token_id = match token_id {
+        Some(token_id) => {
+            if token_id == 0 || token_id > config.num_tokens {
+                return Err(ContractError::InvalidTokenId {});
+            }
+            // If token_id not on mintable map, throw err
+            if !MINTABLE_TOKEN_IDS.has(deps.storage, token_id) {
+                return Err(ContractError::TokenIdAlreadySold { token_id });
+            }
+            token_id
+        }
+
+        None => {
+            let mintable_tokens_result: StdResult<Vec<u32>> = MINTABLE_TOKEN_IDS
+                .keys(deps.storage, None, None, Order::Ascending)
+                .take(1)
+                .collect();
+            let mintable_tokens = mintable_tokens_result?;
+            if mintable_tokens.is_empty() {
+                return Err(ContractError::SoldOut {});
+            }
+            mintable_tokens[0]
+        }
+    };
+
+    let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
+
+    // Create mint msgs
+    let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Empty> {
+        token_id: mintable_token_id.to_string(),
+        owner: recipient_addr.to_string(),
+        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id)),
+        extension: Empty {}, // TODO: add format for royalty
+    });
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: cw721_address.to_string(),
+        msg: to_binary(&mint_msg)?,
+        funds: info.funds.clone(),
+    });
+
+    msgs.append(&mut vec![msg]);
+
+    // Remove mintable token id from map
+    MINTABLE_TOKEN_IDS.remove(deps.storage, mintable_token_id);
+    let mintable_num_tokens = MINTABLE_NUM_TOKENS.load(deps.storage)?;
+    // Decrement mintable num tokens
+    MINTABLE_NUM_TOKENS.save(deps.storage, &(mintable_num_tokens - 1))?;
+
+    Ok(Response::new()
+        .add_attribute("sender", info.sender)
+        .add_attribute("recipient", recipient_addr)
+        .add_attribute("token_id", mintable_token_id.to_string())
+        .add_messages(msgs))
 }
 
 // Reply callback triggered from cw721 contract instantiation
