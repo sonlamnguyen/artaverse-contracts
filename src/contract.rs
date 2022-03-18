@@ -6,6 +6,7 @@ use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as C
 use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
+use crate::{Extension, Metadata};
 use crate::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, STATE, CW721_ADDRESS};
 
@@ -41,6 +42,8 @@ pub fn instantiate(
         base_token_uri: msg.base_token_uri,
         num_tokens: msg.num_tokens,
         cw721_code_id: msg.cw721_code_id,
+        royalty_percentage: msg.royalty_percentage,
+        royalty_payment_address: msg.royalty_payment_address,
     };
     CONFIG.save(deps.storage, &config)?;
     MINTABLE_NUM_TOKENS.save(deps.storage, &msg.num_tokens)?;
@@ -162,11 +165,15 @@ fn _execute_mint(
     let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
 
     // Create mint msgs
-    let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Empty> {
+    let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Extension> {
         token_id: mintable_token_id.to_string(),
         owner: recipient_addr.to_string(),
         token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id)),
-        extension: Empty {}, // TODO: add format for royalty
+        extension: Some(Metadata {
+            royalty_percentage: config.royalty_percentage,
+            royalty_payment_address: config.royalty_payment_address,
+            ..Metadata::default()
+        }),
     });
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: cw721_address.to_string(),
@@ -226,6 +233,8 @@ mod tests {
                 symbol: String::from("ATA"),
                 minter: Addr::unchecked(MOCK_CONTRACT_ADDR).to_string(),
             },
+            royalty_percentage: None,
+            royalty_payment_address: None,
         };
         let info = mock_info("creator", &coins(1000, "earth"));
 

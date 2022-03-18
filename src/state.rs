@@ -15,6 +15,8 @@ pub struct Config {
     pub base_token_uri: String,
     pub num_tokens: u32,
     pub cw721_code_id: u64,
+    pub royalty_percentage: Option<u64>,
+    pub royalty_payment_address: Option<String>,
 }
 
 pub const STATE: Item<State> = Item::new("state");

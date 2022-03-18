@@ -9,6 +9,9 @@ pub struct InstantiateMsg {
     pub num_tokens: u32,
     pub cw721_code_id: u64,
     pub cw721_instantiate_msg: CW721InstantiateMsg,
+    pub royalty_percentage: Option<u64>,
+    pub royalty_payment_address: Option<String>,
+
 }
 
 
