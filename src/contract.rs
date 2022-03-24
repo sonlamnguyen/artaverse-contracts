@@ -7,8 +7,8 @@ use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
 use crate::{Extension, Metadata};
-use crate::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, STATE, CW721_ADDRESS};
+use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, CW721_ADDRESS};
 
 
 // version info for migration info
@@ -39,9 +39,13 @@ pub fn instantiate(
     }
 
     let config = Config {
-        base_token_uri: msg.base_token_uri,
-        num_tokens: msg.num_tokens,
+        owner: info.sender.clone(),
         cw721_code_id: msg.cw721_code_id,
+        cw721_address: None,
+        name: msg.name.clone(),
+        symbol: msg.symbol.clone(),
+        base_token_uri: msg.base_token_uri.clone(),
+        max_tokens: msg.num_tokens,
         royalty_percentage: msg.royalty_percentage,
         royalty_payment_address: msg.royalty_payment_address,
     };
@@ -60,8 +64,8 @@ pub fn instantiate(
             admin: Some(info.sender.to_string()),
             code_id: msg.cw721_code_id,
             msg: to_binary(&Cw721InstantiateMsg {
-                name: msg.cw721_instantiate_msg.name,
-                symbol: msg.cw721_instantiate_msg.symbol,
+                name: msg.name,
+                symbol: msg.symbol,
                 minter: _env.contract.address.to_string(),
             })?,
             funds: info.funds,
@@ -114,14 +118,28 @@ pub fn execute_mint_to(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+        QueryMsg::GetConfig {} => to_binary(&query_config(deps)?),
     }
 }
 
-fn query_count(deps: Deps) -> StdResult<CountResponse> {
-    let state = STATE.load(deps.storage)?;
-    Ok(CountResponse { count: state.count })
+fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
+    let config = CONFIG.load(deps.storage)?;
+    Ok(ConfigResponse {
+        owner: config.owner,
+        cw721_code_id: config.cw721_code_id,
+        cw721_address: config.cw721_address,
+        max_tokens: config.max_tokens,
+        name: config.name,
+        symbol: config.symbol,
+        base_token_uri: config.base_token_uri,
+        extension: Some(Metadata {
+            royalty_percentage: Some(config.royalty_percentage.unwrap()),
+            royalty_payment_address: config.royalty_payment_address,
+            ..Metadata::default()
+        }),
+    })
 }
+
 
 fn _execute_mint(
     deps: DepsMut,
@@ -130,7 +148,6 @@ fn _execute_mint(
     token_id: Option<u32>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let cw721_address = CW721_ADDRESS.load(deps.storage)?;
 
     let recipient_addr = match recipient {
         Some(some_recipient) => some_recipient,
@@ -139,7 +156,7 @@ fn _execute_mint(
 
     let mintable_token_id = match token_id {
         Some(token_id) => {
-            if token_id == 0 || token_id > config.num_tokens {
+            if token_id == 0 || token_id > config.max_tokens {
                 return Err(ContractError::InvalidTokenId {});
             }
             // If token_id not on mintable map, throw err
@@ -176,7 +193,7 @@ fn _execute_mint(
         }),
     });
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: cw721_address.to_string(),
+        contract_addr: config.cw721_address.unwrap().to_string(),
         msg: to_binary(&mint_msg)?,
         funds: info.funds.clone(),
     });
@@ -199,6 +216,7 @@ fn _execute_mint(
 // Reply callback triggered from cw721 contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    let mut config: Config = CONFIG.load(deps.storage)?;
     if msg.id != INSTANTIATE_CW721_REPLY_ID {
         return Err(ContractError::InvalidReplyID {});
     }
@@ -206,6 +224,8 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     let reply = parse_reply_instantiate_data(msg);
     match reply {
         Ok(res) => {
+            config.cw721_address = Addr::unchecked(res.contract_address.clone()).into();
+            CONFIG.save(deps.storage, &config)?;
             CW721_ADDRESS.save(deps.storage, &Addr::unchecked(res.contract_address))?;
             Ok(Response::default().add_attribute("action", "instantiate_cw721_reply"))
         }
@@ -213,12 +233,22 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies_with_balance, mock_env, mock_info};
-    use cosmwasm_std::{coins};
+    use cosmwasm_std::{coins, SubMsgExecutionResponse, SubMsgResult, from_binary};
+    use prost::Message;
+    use crate::msg::ExecuteMsg::Mint;
+
+    // Type for replies to contract instantiate messes
+    #[derive(Clone, PartialEq, Message)]
+    struct MsgInstantiateContractResponse {
+        #[prost(string, tag = "1")]
+        pub contract_address: ::prost::alloc::string::String,
+        #[prost(bytes, tag = "2")]
+        pub data: ::prost::alloc::vec::Vec<u8>,
+    }
 
     #[test]
     fn initialization() {
@@ -228,11 +258,8 @@ mod tests {
             base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
             num_tokens: 20,
             cw721_code_id: 10u64,
-            cw721_instantiate_msg: Cw721InstantiateMsg {
-                name: String::from("ARTAVERSER"),
-                symbol: String::from("ATA"),
-                minter: Addr::unchecked(MOCK_CONTRACT_ADDR).to_string(),
-            },
+            name: String::from("ARTAVERSER"),
+            symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
@@ -247,8 +274,8 @@ mod tests {
                 msg: WasmMsg::Instantiate {
                     code_id: msg.cw721_code_id,
                     msg: to_binary(&Cw721InstantiateMsg {
-                        name: msg.cw721_instantiate_msg.name.clone(),
-                        symbol: msg.cw721_instantiate_msg.symbol.clone(),
+                        name: msg.name.clone(),
+                        symbol: msg.symbol.clone(),
                         minter: MOCK_CONTRACT_ADDR.to_string(),
                     }).unwrap(),
                     funds: info.funds.clone(),
@@ -260,5 +287,60 @@ mod tests {
                 reply_on: ReplyOn::Success,
             }]
         );
+    }
+
+    #[test]
+    fn mint() {
+        let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
+        let info = mock_info("creator", &coins(1000, "earth"));
+
+        let msg = InstantiateMsg {
+            base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
+            num_tokens: 20,
+            cw721_code_id: 10u64,
+            name: String::from("ARTAVERSER"),
+            symbol: String::from("ATA"),
+            royalty_percentage: Some(12u64),
+            royalty_payment_address: Some(String::from("aa")),
+        };
+
+        // we can just call .unwrap() to assert this was a success
+        let res_instantiate = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
+        println!("res_instantiate {:?}", res_instantiate);
+
+        let instantiate_reply = MsgInstantiateContractResponse {
+            contract_address: "nftcontract721".to_string(),
+            data: vec![2u8; 32769],
+        };
+
+        let mut encoded_instantiate_reply =
+            Vec::<u8>::with_capacity(instantiate_reply.encoded_len() as usize);
+        instantiate_reply
+            .encode(&mut encoded_instantiate_reply)
+            .unwrap();
+
+        let reply_msg = Reply {
+            id: INSTANTIATE_CW721_REPLY_ID,
+            result: SubMsgResult::Ok(SubMsgExecutionResponse {
+                events: vec![],
+                data: Some(encoded_instantiate_reply.into()),
+            }),
+        };
+        reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+
+        let query_msg = QueryMsg::GetConfig {};
+        let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
+        let config: ConfigResponse = from_binary(&res).unwrap();
+
+        println!("ConfigResponse {:?}", config);
+
+        // call mint NFT
+        let msg_mint = Mint {
+            token_id: 1
+        };
+
+        let res_execute = execute(deps.as_mut(), mock_env(), info, msg_mint).unwrap();
+        println!("res_execute {:?}", res_execute);
+
     }
 }

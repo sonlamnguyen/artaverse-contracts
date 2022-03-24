@@ -12,9 +12,13 @@ pub struct State {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
+    pub owner: Addr,
     pub base_token_uri: String,
-    pub num_tokens: u32,
+    pub max_tokens: u32,
     pub cw721_code_id: u64,
+    pub cw721_address: Option<Addr>,
+    pub name: String,
+    pub symbol: String,
     pub royalty_percentage: Option<u64>,
     pub royalty_payment_address: Option<String>,
 }

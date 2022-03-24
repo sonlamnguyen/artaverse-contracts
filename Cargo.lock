@@ -20,6 +20,7 @@ dependencies = [
  "cw-utils 0.12.1",
  "cw2 0.13.0",
  "cw721-base",
+ "prost",
  "schemars",
  "serde",
  "thiserror",
