@@ -6,20 +6,29 @@ use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as C
 use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
-use crate::{Extension, Metadata};
+use crate::{Extension, Metadata,JsonSchema};
 use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, CW721_ADDRESS};
-
+use crate::{Serialize,Deserialize};
+pub type Cw721ArtaverseContract<'a> = cw721_base::Cw721Contract<'a, Extension, Empty>;
+// pub type ExecuteMsg = cw721_base::ExecuteMsg<Extension>;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:artaverse-contracts";
-
-
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // governance parameters
 const MAX_TOKEN_LIMIT: u32 = 10000;
+const MAX_TOKEN_PER_BATCH_LIMIT: u32 = 10000;
 const INSTANTIATE_CW721_REPLY_ID: u64 = 1;
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct TokensResponse {
+    /// Contains all token_ids in lexicographical ordering
+    /// If there are more than `limit`, use `start_from` in future queries
+    /// to achieve pagination.
+    pub tokens: Vec<String>,
+}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -38,6 +47,14 @@ pub fn instantiate(
         });
     }
 
+    // Check the number of tokens per batch is more than zero and less than the max limit
+    if msg.max_tokens_per_batch_mint == 0 || msg.max_tokens_per_batch_mint > MAX_TOKEN_PER_BATCH_LIMIT {
+        return Err(ContractError::InvalidNumTokens {
+            min: 1,
+            max: MAX_TOKEN_PER_BATCH_LIMIT,
+        });
+    }
+
     let config = Config {
         owner: info.sender.clone(),
         cw721_code_id: msg.cw721_code_id,
@@ -46,6 +63,7 @@ pub fn instantiate(
         symbol: msg.symbol.clone(),
         base_token_uri: msg.base_token_uri.clone(),
         max_tokens: msg.num_tokens,
+        max_tokens_per_batch_mint: msg.max_tokens_per_batch_mint,
         royalty_percentage: msg.royalty_percentage,
         royalty_payment_address: msg.royalty_payment_address,
     };
@@ -57,7 +75,7 @@ pub fn instantiate(
         MINTABLE_TOKEN_IDS.save(deps.storage, token_id, &true)?;
     }
 
-    // Submessage to instantiate cw721 contract
+    // Sub-message to instantiate cw721 contract
     let sub_msgs: Vec<SubMsg> = vec![SubMsg {
         id: INSTANTIATE_CW721_REPLY_ID,
         msg: WasmMsg::Instantiate {
@@ -92,6 +110,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Mint { token_id } => execute_mint_sender(deps, info, token_id),
+        ExecuteMsg::BatchMint { token_ids } => execute_batch_mint_sender(deps, info, token_ids),
         ExecuteMsg::MintTo { token_id, recipient } => execute_mint_to(deps, info, recipient, token_id),
     }
 }
@@ -115,10 +134,20 @@ pub fn execute_mint_to(
     _execute_mint(deps, info, Some(recipient), Some(token_id))
 }
 
+pub fn execute_batch_mint_sender(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_ids: Vec<u32>,
+) -> Result<Response, ContractError> {
+    let recipient = info.sender.clone();
+    _execute_batch_mint(deps, info, Some(recipient), token_ids)
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetConfig {} => to_binary(&query_config(deps)?),
+        _ => Cw721ArtaverseContract::default().query(deps, env, msg.into()),
     }
 }
 
@@ -129,6 +158,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         cw721_code_id: config.cw721_code_id,
         cw721_address: config.cw721_address,
         max_tokens: config.max_tokens,
+        max_tokens_per_mint: config.max_tokens_per_batch_mint,
         name: config.name,
         symbol: config.symbol,
         base_token_uri: config.base_token_uri,
@@ -180,25 +210,12 @@ fn _execute_mint(
     };
 
     let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
-
-    // Create mint msgs
-    let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Extension> {
-        token_id: mintable_token_id.to_string(),
-        owner: recipient_addr.to_string(),
-        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id)),
-        extension: Some(Metadata {
-            royalty_percentage: config.royalty_percentage,
-            royalty_payment_address: config.royalty_payment_address,
-            ..Metadata::default()
-        }),
-    });
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: config.cw721_address.unwrap().to_string(),
-        msg: to_binary(&mint_msg)?,
-        funds: info.funds.clone(),
-    });
-
-    msgs.append(&mut vec![msg]);
+    let msg = _create_cw721_mint(&info, &config, &recipient_addr, mintable_token_id);
+    let msg_rs = match msg {
+        Ok(msg) => {msg},
+        Err(ctr_err) => return Err(ctr_err),
+    };
+    msgs.append(&mut vec![msg_rs]);
 
     // Remove mintable token id from map
     MINTABLE_TOKEN_IDS.remove(deps.storage, mintable_token_id);
@@ -211,6 +228,80 @@ fn _execute_mint(
         .add_attribute("recipient", recipient_addr)
         .add_attribute("token_id", mintable_token_id.to_string())
         .add_messages(msgs))
+}
+
+fn _execute_batch_mint(
+    deps: DepsMut,
+    info: MessageInfo,
+    recipient: Option<Addr>,
+    mut batch_token_ids: Vec<u32>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    let recipient_addr = match recipient {
+        Some(some_recipient) => some_recipient,
+        None => info.sender.clone(),
+    };
+    let mut count: u32 = 0;
+    let mut minted_token_ids: Vec<u32> = vec![];
+    let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
+    while let Some(token_id) = batch_token_ids.pop() {
+        if count >= config.max_tokens_per_batch_mint { break; }
+
+        if token_id == 0 || token_id > config.max_tokens {
+            return Err(ContractError::InvalidTokenId {});
+        }
+        // If token_id not on mintable map, throw err
+        if !MINTABLE_TOKEN_IDS.has(deps.storage, token_id) {
+            return Err(ContractError::TokenIdAlreadySold { token_id });
+        }
+
+        let msg = _create_cw721_mint(&info, &config, &recipient_addr, token_id);
+        let msg_rs = match msg {
+            Ok(msg) => {msg},
+            Err(ctr_err) => return Err(ctr_err),
+        };
+        msgs.append(&mut vec![msg_rs]);
+
+        // Remove mintable token id from map
+        MINTABLE_TOKEN_IDS.remove(deps.storage, token_id);
+        let mintable_num_tokens = MINTABLE_NUM_TOKENS.load(deps.storage)?;
+        // Decrement mintable num tokens
+        MINTABLE_NUM_TOKENS.save(deps.storage, &(mintable_num_tokens - 1))?;
+
+        minted_token_ids.append(&mut vec![token_id]);
+        count += 1;
+    }
+    let minted_token_ids_str = format!("{:?}", minted_token_ids);
+    Ok(Response::new()
+        .add_attribute("sender", info.sender)
+        .add_attribute("recipient", recipient_addr)
+        .add_attribute("token_id", minted_token_ids_str)
+        .add_messages(msgs))
+}
+
+fn _create_cw721_mint<'a>(
+    info: &'a MessageInfo,
+    config: &'a Config,
+    recipient_addr: &'a Addr,
+    mintable_token_id: u32,
+) -> Result<CosmosMsg, ContractError> {
+    let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Extension> {
+        token_id: mintable_token_id.to_string(),
+        owner: recipient_addr.to_string(),
+        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id.to_string())),
+        extension: Some(Metadata {
+            royalty_percentage: config.royalty_percentage,
+            royalty_payment_address: config.royalty_payment_address.clone(),
+            ..Metadata::default()
+        }),
+    });
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: config.cw721_address.as_ref().unwrap().to_string(),
+        msg: to_binary(&mint_msg)?,
+        funds: info.funds.clone(),
+    });
+    Ok(msg)
 }
 
 // Reply callback triggered from cw721 contract instantiation
@@ -235,11 +326,13 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 
 #[cfg(test)]
 mod tests {
+    use std::ptr::null;
     use super::*;
     use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies_with_balance, mock_env, mock_info};
-    use cosmwasm_std::{coins, SubMsgExecutionResponse, SubMsgResult, from_binary};
+    use cosmwasm_std::{coins, SubMsgExecutionResponse, SubMsgResult, from_binary, Decimal};
+    use cw721_base::state::TokenInfo;
     use prost::Message;
-    use crate::msg::ExecuteMsg::Mint;
+    use crate::msg::ExecuteMsg::{BatchMint, Mint};
 
     // Type for replies to contract instantiate messes
     #[derive(Clone, PartialEq, Message)]
@@ -257,6 +350,7 @@ mod tests {
         let msg = InstantiateMsg {
             base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
             num_tokens: 20,
+            max_tokens_per_batch_mint: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
@@ -297,6 +391,7 @@ mod tests {
         let msg = InstantiateMsg {
             base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
             num_tokens: 20,
+            max_tokens_per_batch_mint: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
@@ -341,6 +436,41 @@ mod tests {
 
         let res_execute = execute(deps.as_mut(), mock_env(), info, msg_mint).unwrap();
         println!("res_execute {:?}", res_execute);
+
+        // call batch mint NFT
+        // let msg_mint = BatchMint {
+        //     token_ids: vec![1,2,3,4,5,6,7,8,9,10,11,12,13]
+        //     // token_ids: vec![1,2]
+        // };
+        //
+        // let res_execute = execute(deps.as_mut(), mock_env(), info, msg_mint).unwrap();
+        // println!("res_execute_batch {:?}", res_execute);
+        //
+        // let token_id = 2
+        //     .to_string();
+        let query_msg = QueryMsg::AllTokens { start_after: None, limit: None };
+        let res:TokensResponse = from_binary(&query(deps.as_ref(), mock_env(), query_msg).unwrap()).unwrap();
+        // let config: TokenInfo<Extension> = from_binary(&rex).unwrap();
+
+        println!("ConfigResponse {:?}", res);
+
+        // let contract = setup_contract(deps.as_mut());
+        // let token_id = "2".to_string();
+        // // let info_msg = cw721_base::msg::QueryMsg::NftInfo {token_id: token_id.clone()};
+        // // let contract = Cw721ArtaverseContract::default();
+        // // let info = contract.query(deps.as_ref(),mock_env(),info_msg).unwrap();
+        // // println!("info {:?}", info);
+        //
+        // let contract = Cw721ArtaverseContract::default();
+        // let token_info = contract.tokens.load(deps.as_ref().storage, &token_id).unwrap();
+        //
+        // let royalty_percentage = match token_info.extension {
+        //     Some(ref ext) => match ext.royalty_percentage {
+        //         Some(percentage) => Decimal::percent(percentage),
+        //         None => Decimal::percent(0),
+        //     },
+        //     None => Decimal::percent(0),
+        // };
 
     }
 }
