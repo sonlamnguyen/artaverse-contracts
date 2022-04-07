@@ -163,7 +163,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         symbol: config.symbol,
         base_token_uri: config.base_token_uri,
         extension: Some(Metadata {
-            royalty_percentage: Some(config.royalty_percentage.unwrap()),
+            royalty_percentage: config.royalty_percentage,
             royalty_payment_address: config.royalty_payment_address,
             ..Metadata::default()
         }),

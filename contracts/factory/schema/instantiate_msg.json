@@ -3,12 +3,19 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
-    "count"
+    "cw721_code_id",
+    "minter_code_id"
   ],
   "properties": {
-    "count": {
+    "cw721_code_id": {
       "type": "integer",
-      "format": "int32"
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "minter_code_id": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
     }
   }
 }
