@@ -252,6 +252,6 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
             MINTER_ADDRESS.save(deps.storage, &Addr::unchecked(res.contract_address))?;
             Ok(Response::default().add_attribute("action", "instantiate_minter_reply"))
         }
-        Err(_) => Err(ContractError::InstantiateSg721Error {}),
+        Err(_) => Err(ContractError::InstantiateMinterError {}),
     }
 }
