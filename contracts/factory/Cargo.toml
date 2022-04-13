@@ -50,6 +50,7 @@ thiserror = { version = "1.0" }
 minter = { path = "../minter", features = ["library"] }
 cw721 = "0.12.0"
 cw721-base = { version = "0.12.0", features = ["library"] }
+cw-utils = "0.12.1"
 
 [dev-dependencies]
 cosmwasm-schema = { version = "1.0.0-beta6" }

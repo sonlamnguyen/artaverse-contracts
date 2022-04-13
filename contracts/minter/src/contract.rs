@@ -6,10 +6,11 @@ use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as C
 use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
-use crate::{Extension, Metadata,JsonSchema};
+use crate::{Extension, Metadata, JsonSchema};
 use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, CW721_ADDRESS};
-use crate::{Serialize,Deserialize};
+use crate::{Serialize, Deserialize};
+
 pub type Cw721ArtaverseContract<'a> = cw721_base::Cw721Contract<'a, Extension, Empty>;
 // pub type ExecuteMsg = cw721_base::ExecuteMsg<Extension>;
 
@@ -33,7 +34,7 @@ pub struct TokensResponse {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -84,9 +85,9 @@ pub fn instantiate(
             msg: to_binary(&Cw721InstantiateMsg {
                 name: msg.name,
                 symbol: msg.symbol,
-                minter: _env.contract.address.to_string(),
+                minter: env.contract.address.to_string(),
             })?,
-            funds: info.funds,
+            funds: vec![],
             label: String::from("Check CW721"),
         }.into(),
         gas_limit: None,
@@ -99,6 +100,7 @@ pub fn instantiate(
         .add_attribute("contract_name", CONTRACT_NAME)
         .add_attribute("contract_version", CONTRACT_VERSION)
         .add_submessages(sub_msgs))
+    // )
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -212,7 +214,7 @@ fn _execute_mint(
     let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
     let msg = _create_cw721_mint(&info, &config, &recipient_addr, mintable_token_id);
     let msg_rs = match msg {
-        Ok(msg) => {msg},
+        Ok(msg) => { msg }
         Err(ctr_err) => return Err(ctr_err),
     };
     msgs.append(&mut vec![msg_rs]);
@@ -258,7 +260,7 @@ fn _execute_batch_mint(
 
         let msg = _create_cw721_mint(&info, &config, &recipient_addr, token_id);
         let msg_rs = match msg {
-            Ok(msg) => {msg},
+            Ok(msg) => { msg }
             Err(ctr_err) => return Err(ctr_err),
         };
         msgs.append(&mut vec![msg_rs]);
@@ -381,6 +383,11 @@ mod tests {
                 reply_on: ReplyOn::Success,
             }]
         );
+        let query_msg = QueryMsg::GetConfig {};
+        let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
+        let config: ConfigResponse = from_binary(&res).unwrap();
+
+        println!("ConfigResponse {:?}", config);
     }
 
     #[test]
@@ -449,7 +456,7 @@ mod tests {
         // let token_id = 2
         //     .to_string();
         let query_msg = QueryMsg::AllTokens { start_after: None, limit: None };
-        let res:TokensResponse = from_binary(&query(deps.as_ref(), mock_env(), query_msg).unwrap()).unwrap();
+        let res: TokensResponse = from_binary(&query(deps.as_ref(), mock_env(), query_msg).unwrap()).unwrap();
         // let config: TokenInfo<Extension> = from_binary(&rex).unwrap();
 
         println!("ConfigResponse {:?}", res);
@@ -471,6 +478,5 @@ mod tests {
         //     },
         //     None => Decimal::percent(0),
         // };
-
     }
 }

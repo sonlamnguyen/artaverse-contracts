@@ -1,13 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, SubMsg, WasmMsg, ReplyOn};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, SubMsg, WasmMsg, ReplyOn, Reply, Addr};
 // use cosmwasm_std::ReplyOn::Error;
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse};
-use crate::state::{CW721_CODE_ID, MINTER_CODE_ID};
-
+use crate::state::{CW721_CODE_ID, MINTER_ADDRESS, MINTER_CODE_ID};
+use cw_utils::{parse_reply_instantiate_data};
 use minter::msg::InstantiateMsg as MinterInstantiateMsg;
 
 const INSTANTIATE_MINTER_REPLY_ID: u64 = 1;
@@ -130,16 +130,16 @@ fn _execute_create_minter(
             admin: Some(info.sender.to_string()),
             code_id: minter_code_id,
             msg: to_binary(&MinterInstantiateMsg {
-                name: name.clone(),
-                symbol: symbol.clone(),
-                base_token_uri: base_token_uri.clone(),
+                name: String::from(name),
+                symbol: String::from(symbol),
+                base_token_uri: String::from(base_token_uri),
                 max_tokens_per_batch_mint,
                 royalty_percentage,
                 royalty_payment_address,
                 num_tokens,
                 cw721_code_id,
             })?,
-            funds: info.funds,
+            funds: vec![],
             label: String::from("Create minter"),
         }.into(),
         gas_limit: None,
@@ -236,5 +236,22 @@ mod tests {
         // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
         // let value: CountResponse = from_binary(&res).unwrap();
         // assert_eq!(5, value.count);
+    }
+}
+
+// Reply callback triggered from minter contract instantiation
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    if msg.id != INSTANTIATE_MINTER_REPLY_ID {
+        return Err(ContractError::InvalidReplyID {});
+    }
+
+    let reply = parse_reply_instantiate_data(msg);
+    match reply {
+        Ok(res) => {
+            MINTER_ADDRESS.save(deps.storage, &Addr::unchecked(res.contract_address))?;
+            Ok(Response::default().add_attribute("action", "instantiate_minter_reply"))
+        }
+        Err(_) => Err(ContractError::InstantiateSg721Error {}),
     }
 }
