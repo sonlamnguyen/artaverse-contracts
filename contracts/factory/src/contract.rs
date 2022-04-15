@@ -5,12 +5,12 @@ use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse};
+use crate::msg::{CreateMinterInstantiateMsg, ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse};
 use crate::state::{CW721_CODE_ID, MINTER_ADDRESS, MINTER_CODE_ID};
 use cw_utils::{parse_reply_instantiate_data};
 use minter::msg::InstantiateMsg as MinterInstantiateMsg;
 
-const INSTANTIATE_MINTER_REPLY_ID: u64 = 1;
+pub(crate) const INSTANTIATE_MINTER_REPLY_ID: u64 = 1;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:factory";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -50,26 +50,19 @@ pub fn execute(
         ExecuteMsg::UpdateMinterCodeId { minter_code_id } => update_minter_code_id(deps, minter_code_id),
         ExecuteMsg::UpdateCw721CodeId { cw721_code_id } => update_cw721_code_id(deps, cw721_code_id),
         ExecuteMsg::CreateMinter {
-            base_token_uri,
-            num_tokens,
-            max_tokens_per_batch_mint,
-            name,
-            symbol,
-            royalty_percentage,
-            royalty_payment_address, }
+            minter_instantiate_msg
+        }
         => create_minter(deps,
                          info,
-                         base_token_uri,
-                         num_tokens,
-                         max_tokens_per_batch_mint,
-                         name,
-                         symbol,
-                         royalty_percentage,
-                         royalty_payment_address, ),
+                         minter_instantiate_msg),
     }
 }
 
 pub fn update_minter_code_id(deps: DepsMut, minter_code_id: u64) -> Result<Response, ContractError> {
+    // Check the id is bigger than zero
+    if minter_code_id == 0 {
+        return Err(ContractError::InvalidID);
+    }
     MINTER_CODE_ID.save(deps.storage, &minter_code_id)?;
     Ok(Response::new()
         .add_attribute("method", "update_minter_code_id")
@@ -77,6 +70,10 @@ pub fn update_minter_code_id(deps: DepsMut, minter_code_id: u64) -> Result<Respo
 }
 
 pub fn update_cw721_code_id(deps: DepsMut, cw721_code_id: u64) -> Result<Response, ContractError> {
+    // Check the id is bigger than zero
+    if cw721_code_id == 0 {
+        return Err(ContractError::InvalidID);
+    }
     CW721_CODE_ID.save(deps.storage, &cw721_code_id)?;
     Ok(Response::new()
         .add_attribute("method", "update_cw721_code_id")
@@ -86,25 +83,13 @@ pub fn update_cw721_code_id(deps: DepsMut, cw721_code_id: u64) -> Result<Respons
 pub fn create_minter(
     deps: DepsMut,
     info: MessageInfo,
-    base_token_uri: String,
-    num_tokens: u32,
-    max_tokens_per_batch_mint: u32,
-    name: String,
-    symbol: String,
-    royalty_percentage: Option<u64>,
-    royalty_payment_address: Option<String>)
+    minter_instantiate_msg: CreateMinterInstantiateMsg)
     -> Result<Response, ContractError> {
     let minter_code_id = MINTER_CODE_ID.load(deps.storage)?;
     let cw721_code_id = CW721_CODE_ID.load(deps.storage)?;
     _execute_create_minter(
         info,
-        base_token_uri,
-        num_tokens,
-        max_tokens_per_batch_mint,
-        name,
-        symbol,
-        royalty_percentage,
-        royalty_payment_address,
+        minter_instantiate_msg,
         minter_code_id,
         cw721_code_id,
     )
@@ -112,13 +97,7 @@ pub fn create_minter(
 
 fn _execute_create_minter(
     info: MessageInfo,
-    base_token_uri: String,
-    num_tokens: u32,
-    max_tokens_per_batch_mint: u32,
-    name: String,
-    symbol: String,
-    royalty_percentage: Option<u64>,
-    royalty_payment_address: Option<String>,
+    minter_instantiate_msg: CreateMinterInstantiateMsg,
     minter_code_id: u64,
     cw721_code_id: u64)
     -> Result<Response, ContractError> {
@@ -129,16 +108,17 @@ fn _execute_create_minter(
         msg: WasmMsg::Instantiate {
             admin: Some(info.sender.to_string()),
             code_id: minter_code_id,
-            msg: to_binary(&MinterInstantiateMsg {
-                name: String::from(name),
-                symbol: String::from(symbol),
-                base_token_uri: String::from(base_token_uri),
-                max_tokens_per_batch_mint,
-                royalty_percentage,
-                royalty_payment_address,
-                num_tokens,
-                cw721_code_id,
-            })?,
+            msg: to_binary(
+                &MinterInstantiateMsg {
+                    name: minter_instantiate_msg.name,
+                    symbol: minter_instantiate_msg.symbol,
+                    base_token_uri: minter_instantiate_msg.base_token_uri,
+                    max_tokens_per_batch_mint: minter_instantiate_msg.max_tokens_per_batch_mint,
+                    royalty_percentage: minter_instantiate_msg.royalty_percentage,
+                    royalty_payment_address: minter_instantiate_msg.royalty_payment_address,
+                    num_tokens: minter_instantiate_msg.num_tokens,
+                    cw721_code_id,
+                })?,
             funds: vec![],
             label: String::from("Create minter"),
         }.into(),
@@ -166,77 +146,6 @@ fn _query_state(deps: Deps) -> StdResult<StateResponse> {
     let minter_code_id = MINTER_CODE_ID.load(deps.storage)?;
     let cw721_code_id = CW721_CODE_ID.load(deps.storage)?;
     Ok(StateResponse { minter_code_id, cw721_code_id })
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-    // use cosmwasm_std::testing::{mock_dependencies_with_balance, mock_env, mock_info};
-    // use cosmwasm_std::{coins, from_binary};
-
-    #[test]
-    fn proper_initialization() {
-        // let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
-        //
-        // let msg = InstantiateMsg { count: 17 };
-        // let info = mock_info("creator", &coins(1000, "earth"));
-        //
-        // // we can just call .unwrap() to assert this was a success
-        // let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        // assert_eq!(0, res.messages.len());
-        //
-        // // it worked, let's query the state
-        // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        // let value: CountResponse = from_binary(&res).unwrap();
-        // assert_eq!(17, value.count);
-    }
-
-    #[test]
-    fn increment() {
-        // let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
-        //
-        // let msg = InstantiateMsg { count: 17 };
-        // let info = mock_info("creator", &coins(2, "token"));
-        // let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        //
-        // // beneficiary can release it
-        // let info = mock_info("anyone", &coins(2, "token"));
-        // let msg = ExecuteMsg::Increment {};
-        // let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-        //
-        // // should increase counter by 1
-        // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        // let value: CountResponse = from_binary(&res).unwrap();
-        // assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        // let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
-        //
-        // let msg = InstantiateMsg { count: 17 };
-        // let info = mock_info("creator", &coins(2, "token"));
-        // let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        //
-        // // beneficiary can release it
-        // let unauth_info = mock_info("anyone", &coins(2, "token"));
-        // let msg = ExecuteMsg::Reset { count: 5 };
-        // let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-        // match res {
-        //     Err(ContractError::Unauthorized {}) => {}
-        //     _ => panic!("Must return unauthorized error"),
-        // }
-        //
-        // // only the original creator can reset the counter
-        // let auth_info = mock_info("creator", &coins(2, "token"));
-        // let msg = ExecuteMsg::Reset { count: 5 };
-        // let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-        //
-        // // should now be 5
-        // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        // let value: CountResponse = from_binary(&res).unwrap();
-        // assert_eq!(5, value.count);
-    }
 }
 
 // Reply callback triggered from minter contract instantiation

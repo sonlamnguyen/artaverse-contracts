@@ -5,12 +5,6 @@ use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct State {
-    pub count: i32,
-    pub owner: Addr,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
     pub owner: Addr,
     pub base_token_uri: String,
@@ -24,7 +18,6 @@ pub struct Config {
     pub royalty_payment_address: Option<String>,
 }
 
-pub const STATE: Item<State> = Item::new("state");
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const MINTABLE_TOKEN_IDS: Map<u32, bool> = Map::new("mintable_ids");
 pub const MINTABLE_NUM_TOKENS: Item<u32> = Item::new("mintable_num_tokens");

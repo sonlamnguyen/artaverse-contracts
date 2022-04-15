@@ -27,10 +27,10 @@
     {
       "type": "object",
       "required": [
-        "update_c_w721_code_id"
+        "update_cw721_code_id"
       ],
       "properties": {
-        "update_c_w721_code_id": {
+        "update_cw721_code_id": {
           "type": "object",
           "required": [
             "cw721_code_id"
@@ -55,50 +55,63 @@
         "create_minter": {
           "type": "object",
           "required": [
-            "base_token_uri",
-            "max_tokens_per_batch_mint",
-            "name",
-            "num_tokens",
-            "symbol"
+            "minter_instantiate_msg"
           ],
           "properties": {
-            "base_token_uri": {
-              "type": "string"
-            },
-            "max_tokens_per_batch_mint": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "name": {
-              "type": "string"
-            },
-            "num_tokens": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "royalty_payment_address": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "royalty_percentage": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "symbol": {
-              "type": "string"
+            "minter_instantiate_msg": {
+              "$ref": "#/definitions/CreateMinterInstantiateMsg"
             }
           }
         }
       },
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "CreateMinterInstantiateMsg": {
+      "type": "object",
+      "required": [
+        "base_token_uri",
+        "max_tokens_per_batch_mint",
+        "name",
+        "num_tokens",
+        "symbol"
+      ],
+      "properties": {
+        "base_token_uri": {
+          "type": "string"
+        },
+        "max_tokens_per_batch_mint": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": "string"
+        },
+        "num_tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "royalty_payment_address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "royalty_percentage": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "symbol": {
+          "type": "string"
+        }
+      }
+    }
+  }
 }

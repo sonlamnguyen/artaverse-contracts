@@ -4,6 +4,7 @@ use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, StdResult
 use cw2::set_contract_version;
 use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as Cw721ExecuteMsg};
 use cw_utils::parse_reply_instantiate_data;
+use url::Url;
 
 use crate::error::ContractError;
 use crate::{Extension, Metadata, JsonSchema};
@@ -19,9 +20,9 @@ const CONTRACT_NAME: &str = "crates.io:artaverse-contracts";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // governance parameters
-const MAX_TOKEN_LIMIT: u32 = 10000;
-const MAX_TOKEN_PER_BATCH_LIMIT: u32 = 10000;
-const INSTANTIATE_CW721_REPLY_ID: u64 = 1;
+pub(crate) const MAX_TOKEN_LIMIT: u32 = 10000;
+pub(crate) const MAX_TOKEN_PER_BATCH_LIMIT: u32 = 20;
+pub(crate) const INSTANTIATE_CW721_REPLY_ID: u64 = 1;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokensResponse {
@@ -54,6 +55,12 @@ pub fn instantiate(
             min: 1,
             max: MAX_TOKEN_PER_BATCH_LIMIT,
         });
+    }
+
+    // Check that base_token_uri is a valid IPFS uri
+    let parsed_token_uri = Url::parse(&msg.base_token_uri)?;
+    if parsed_token_uri.scheme() != "ipfs" {
+        return Err(ContractError::InvalidBaseTokenURI {});
     }
 
     let config = Config {
@@ -99,8 +106,8 @@ pub fn instantiate(
         .add_attribute("owner", info.sender)
         .add_attribute("contract_name", CONTRACT_NAME)
         .add_attribute("contract_version", CONTRACT_VERSION)
-        .add_submessages(sub_msgs))
-    // )
+        .add_submessages(sub_msgs)
+    )
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -291,7 +298,7 @@ fn _create_cw721_mint<'a>(
     let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Extension> {
         token_id: mintable_token_id.to_string(),
         owner: recipient_addr.to_string(),
-        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id.to_string())),
+        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id.clone())),
         extension: Some(Metadata {
             royalty_percentage: config.royalty_percentage,
             royalty_payment_address: config.royalty_payment_address.clone(),
@@ -323,160 +330,5 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
             Ok(Response::default().add_attribute("action", "instantiate_cw721_reply"))
         }
         Err(_) => Err(ContractError::InstantiateCW721Error {}),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::ptr::null;
-    use super::*;
-    use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies_with_balance, mock_env, mock_info};
-    use cosmwasm_std::{coins, SubMsgExecutionResponse, SubMsgResult, from_binary, Decimal};
-    use cw721_base::state::TokenInfo;
-    use prost::Message;
-    use crate::msg::ExecuteMsg::{BatchMint, Mint};
-
-    // Type for replies to contract instantiate messes
-    #[derive(Clone, PartialEq, Message)]
-    struct MsgInstantiateContractResponse {
-        #[prost(string, tag = "1")]
-        pub contract_address: ::prost::alloc::string::String,
-        #[prost(bytes, tag = "2")]
-        pub data: ::prost::alloc::vec::Vec<u8>,
-    }
-
-    #[test]
-    fn initialization() {
-        let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
-
-        let msg = InstantiateMsg {
-            base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
-            num_tokens: 20,
-            max_tokens_per_batch_mint: 10,
-            cw721_code_id: 10u64,
-            name: String::from("ARTAVERSER"),
-            symbol: String::from("ATA"),
-            royalty_percentage: None,
-            royalty_payment_address: None,
-        };
-        let info = mock_info("creator", &coins(1000, "earth"));
-
-        // we can just call .unwrap() to assert this was a success
-        let res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
-        println!("{:?}", res);
-        assert_eq!(
-            res.messages,
-            vec![SubMsg {
-                msg: WasmMsg::Instantiate {
-                    code_id: msg.cw721_code_id,
-                    msg: to_binary(&Cw721InstantiateMsg {
-                        name: msg.name.clone(),
-                        symbol: msg.symbol.clone(),
-                        minter: MOCK_CONTRACT_ADDR.to_string(),
-                    }).unwrap(),
-                    funds: info.funds.clone(),
-                    admin: Some(info.sender.to_string()),
-                    label: String::from("Check CW721"),
-                }.into(),
-                id: INSTANTIATE_CW721_REPLY_ID,
-                gas_limit: None,
-                reply_on: ReplyOn::Success,
-            }]
-        );
-        let query_msg = QueryMsg::GetConfig {};
-        let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
-
-        println!("ConfigResponse {:?}", config);
-    }
-
-    #[test]
-    fn mint() {
-        let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
-        let info = mock_info("creator", &coins(1000, "earth"));
-
-        let msg = InstantiateMsg {
-            base_token_uri: String::from("https://ipfs.io/ipfs/kaka"),
-            num_tokens: 20,
-            max_tokens_per_batch_mint: 10,
-            cw721_code_id: 10u64,
-            name: String::from("ARTAVERSER"),
-            symbol: String::from("ATA"),
-            royalty_percentage: Some(12u64),
-            royalty_payment_address: Some(String::from("aa")),
-        };
-
-        // we can just call .unwrap() to assert this was a success
-        let res_instantiate = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
-        println!("res_instantiate {:?}", res_instantiate);
-
-        let instantiate_reply = MsgInstantiateContractResponse {
-            contract_address: "nftcontract721".to_string(),
-            data: vec![2u8; 32769],
-        };
-
-        let mut encoded_instantiate_reply =
-            Vec::<u8>::with_capacity(instantiate_reply.encoded_len() as usize);
-        instantiate_reply
-            .encode(&mut encoded_instantiate_reply)
-            .unwrap();
-
-        let reply_msg = Reply {
-            id: INSTANTIATE_CW721_REPLY_ID,
-            result: SubMsgResult::Ok(SubMsgExecutionResponse {
-                events: vec![],
-                data: Some(encoded_instantiate_reply.into()),
-            }),
-        };
-        reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
-
-        let query_msg = QueryMsg::GetConfig {};
-        let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
-
-        println!("ConfigResponse {:?}", config);
-
-        // call mint NFT
-        let msg_mint = Mint {
-            token_id: 1
-        };
-
-        let res_execute = execute(deps.as_mut(), mock_env(), info, msg_mint).unwrap();
-        println!("res_execute {:?}", res_execute);
-
-        // call batch mint NFT
-        // let msg_mint = BatchMint {
-        //     token_ids: vec![1,2,3,4,5,6,7,8,9,10,11,12,13]
-        //     // token_ids: vec![1,2]
-        // };
-        //
-        // let res_execute = execute(deps.as_mut(), mock_env(), info, msg_mint).unwrap();
-        // println!("res_execute_batch {:?}", res_execute);
-        //
-        // let token_id = 2
-        //     .to_string();
-        let query_msg = QueryMsg::AllTokens { start_after: None, limit: None };
-        let res: TokensResponse = from_binary(&query(deps.as_ref(), mock_env(), query_msg).unwrap()).unwrap();
-        // let config: TokenInfo<Extension> = from_binary(&rex).unwrap();
-
-        println!("ConfigResponse {:?}", res);
-
-        // let contract = setup_contract(deps.as_mut());
-        // let token_id = "2".to_string();
-        // // let info_msg = cw721_base::msg::QueryMsg::NftInfo {token_id: token_id.clone()};
-        // // let contract = Cw721ArtaverseContract::default();
-        // // let info = contract.query(deps.as_ref(),mock_env(),info_msg).unwrap();
-        // // println!("info {:?}", info);
-        //
-        // let contract = Cw721ArtaverseContract::default();
-        // let token_info = contract.tokens.load(deps.as_ref().storage, &token_id).unwrap();
-        //
-        // let royalty_percentage = match token_info.extension {
-        //     Some(ref ext) => match ext.royalty_percentage {
-        //         Some(percentage) => Decimal::percent(percentage),
-        //         None => Decimal::percent(0),
-        //     },
-        //     None => Decimal::percent(0),
-        // };
     }
 }

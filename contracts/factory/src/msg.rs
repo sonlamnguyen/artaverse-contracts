@@ -13,13 +13,7 @@ pub enum ExecuteMsg {
     UpdateMinterCodeId { minter_code_id: u64 },
     UpdateCw721CodeId { cw721_code_id: u64 },
     CreateMinter {
-        base_token_uri: String,
-        num_tokens: u32,
-        max_tokens_per_batch_mint: u32,
-        name: String,
-        symbol: String,
-        royalty_percentage: Option<u64>,
-        royalty_payment_address: Option<String>,
+        minter_instantiate_msg: CreateMinterInstantiateMsg
     },
 }
 
@@ -36,3 +30,15 @@ pub struct StateResponse {
     pub(crate) minter_code_id: u64,
     pub(crate) cw721_code_id: u64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct CreateMinterInstantiateMsg {
+    pub base_token_uri: String,
+    pub num_tokens: u32,
+    pub max_tokens_per_batch_mint: u32,
+    pub name: String,
+    pub symbol: String,
+    pub royalty_percentage: Option<u64>,
+    pub royalty_payment_address: Option<String>,
+}
+

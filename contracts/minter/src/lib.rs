@@ -1,10 +1,10 @@
 pub mod contract;
 mod error;
-pub mod helpers;
-pub mod integration_tests;
 pub mod msg;
 pub mod state;
 
+#[cfg(test)]
+mod contract_tests;
 
 pub use cw721_base::{ContractError};
 use schemars::JsonSchema;
