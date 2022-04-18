@@ -18,7 +18,6 @@ pub struct InstantiateMsg {
     pub royalty_payment_address: Option<String>,
 }
 
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
@@ -56,7 +55,9 @@ pub enum QueryMsg {
     /// With MetaData Extension.
     /// Returns metadata about one particular token, based on *ERC721 Metadata JSON Schema*
     /// but directly from the contract: `NftInfoResponse`
-    NftInfo { token_id: String },
+    NftInfo {
+        token_id: String,
+    },
     /// With MetaData Extension.
     /// Returns the result of both `NftInfo` and `OwnerOf` as one query as an optimization
     /// for clients: `AllNftInfo`
@@ -82,6 +83,7 @@ pub enum QueryMsg {
         limit: Option<u32>,
     },
 }
+
 impl From<QueryMsg> for CW721QueryMsg {
     fn from(msg: QueryMsg) -> CW721QueryMsg {
         match msg {

@@ -1,16 +1,18 @@
-#[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, StdResult, WasmMsg, ReplyOn, Reply, Addr, Response, SubMsg, Order, Empty, CosmosMsg};
+use cosmwasm_std::{
+    to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Order, Reply,
+    ReplyOn, Response, StdResult, SubMsg, WasmMsg,
+};
 use cw2::set_contract_version;
-use cw721_base::{InstantiateMsg as Cw721InstantiateMsg, MintMsg, ExecuteMsg as Cw721ExecuteMsg};
+use cw721_base::{ExecuteMsg as Cw721ExecuteMsg, InstantiateMsg as Cw721InstantiateMsg, MintMsg};
 use cw_utils::parse_reply_instantiate_data;
 use url::Url;
 
 use crate::error::ContractError;
-use crate::{Extension, Metadata, JsonSchema};
 use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG, MINTABLE_TOKEN_IDS, MINTABLE_NUM_TOKENS, CW721_ADDRESS};
-use crate::{Serialize, Deserialize};
+use crate::state::{Config, CONFIG, CW721_ADDRESS, MINTABLE_NUM_TOKENS, MINTABLE_TOKEN_IDS};
+use crate::{Deserialize, Serialize};
+use crate::{Extension, JsonSchema, Metadata};
 
 pub type Cw721ArtaverseContract<'a> = cw721_base::Cw721Contract<'a, Extension, Empty>;
 // pub type ExecuteMsg = cw721_base::ExecuteMsg<Extension>;
@@ -50,7 +52,9 @@ pub fn instantiate(
     }
 
     // Check the number of tokens per batch is more than zero and less than the max limit
-    if msg.max_tokens_per_batch_mint == 0 || msg.max_tokens_per_batch_mint > MAX_TOKEN_PER_BATCH_LIMIT {
+    if msg.max_tokens_per_batch_mint == 0
+        || msg.max_tokens_per_batch_mint > MAX_TOKEN_PER_BATCH_LIMIT
+    {
         return Err(ContractError::InvalidNumTokens {
             min: 1,
             max: MAX_TOKEN_PER_BATCH_LIMIT,
@@ -96,7 +100,8 @@ pub fn instantiate(
             })?,
             funds: vec![],
             label: String::from("Check CW721"),
-        }.into(),
+        }
+        .into(),
         gas_limit: None,
         reply_on: ReplyOn::Success,
     }];
@@ -106,8 +111,7 @@ pub fn instantiate(
         .add_attribute("owner", info.sender)
         .add_attribute("contract_name", CONTRACT_NAME)
         .add_attribute("contract_version", CONTRACT_VERSION)
-        .add_submessages(sub_msgs)
-    )
+        .add_submessages(sub_msgs))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -120,7 +124,10 @@ pub fn execute(
     match msg {
         ExecuteMsg::Mint { token_id } => execute_mint_sender(deps, info, token_id),
         ExecuteMsg::BatchMint { token_ids } => execute_batch_mint_sender(deps, info, token_ids),
-        ExecuteMsg::MintTo { token_id, recipient } => execute_mint_to(deps, info, recipient, token_id),
+        ExecuteMsg::MintTo {
+            token_id,
+            recipient,
+        } => execute_mint_to(deps, info, recipient, token_id),
     }
 }
 
@@ -179,7 +186,6 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     })
 }
 
-
 fn _execute_mint(
     deps: DepsMut,
     info: MessageInfo,
@@ -221,7 +227,7 @@ fn _execute_mint(
     let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
     let msg = _create_cw721_mint(&info, &config, &recipient_addr, mintable_token_id);
     let msg_rs = match msg {
-        Ok(msg) => { msg }
+        Ok(msg) => msg,
         Err(ctr_err) => return Err(ctr_err),
     };
     msgs.append(&mut vec![msg_rs]);
@@ -255,7 +261,9 @@ fn _execute_batch_mint(
     let mut minted_token_ids: Vec<u32> = vec![];
     let mut msgs: Vec<CosmosMsg<Empty>> = vec![];
     while let Some(token_id) = batch_token_ids.pop() {
-        if count >= config.max_tokens_per_batch_mint { break; }
+        if count >= config.max_tokens_per_batch_mint {
+            break;
+        }
 
         if token_id == 0 || token_id > config.max_tokens {
             return Err(ContractError::InvalidTokenId {});
@@ -267,7 +275,7 @@ fn _execute_batch_mint(
 
         let msg = _create_cw721_mint(&info, &config, &recipient_addr, token_id);
         let msg_rs = match msg {
-            Ok(msg) => { msg }
+            Ok(msg) => msg,
             Err(ctr_err) => return Err(ctr_err),
         };
         msgs.append(&mut vec![msg_rs]);
@@ -298,7 +306,11 @@ fn _create_cw721_mint<'a>(
     let mint_msg = Cw721ExecuteMsg::Mint(MintMsg::<Extension> {
         token_id: mintable_token_id.to_string(),
         owner: recipient_addr.to_string(),
-        token_uri: Some(format!("{}/{}", config.base_token_uri, mintable_token_id.clone())),
+        token_uri: Some(format!(
+            "{}/{}",
+            config.base_token_uri,
+            mintable_token_id.clone()
+        )),
         extension: Some(Metadata {
             royalty_percentage: config.royalty_percentage,
             royalty_payment_address: config.royalty_payment_address.clone(),

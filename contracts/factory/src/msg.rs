@@ -10,10 +10,14 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    UpdateMinterCodeId { minter_code_id: u64 },
-    UpdateCw721CodeId { cw721_code_id: u64 },
+    UpdateMinterCodeId {
+        minter_code_id: u64,
+    },
+    UpdateCw721CodeId {
+        cw721_code_id: u64,
+    },
     CreateMinter {
-        minter_instantiate_msg: CreateMinterInstantiateMsg
+        minter_instantiate_msg: CreateMinterInstantiateMsg,
     },
 }
 
@@ -41,4 +45,3 @@ pub struct CreateMinterInstantiateMsg {
     pub royalty_percentage: Option<u64>,
     pub royalty_payment_address: Option<String>,
 }
-

@@ -6,7 +6,7 @@ pub mod state;
 #[cfg(test)]
 mod contract_tests;
 
-pub use cw721_base::{ContractError};
+pub use cw721_base::ContractError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

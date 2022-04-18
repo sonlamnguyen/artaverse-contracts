@@ -1,5 +1,5 @@
-use crate::contract::{instantiate, execute, query};
-use crate::msg::{StateResponse, InstantiateMsg, QueryMsg};
+use crate::contract::{execute, instantiate, query};
+use crate::msg::{InstantiateMsg, QueryMsg, StateResponse};
 
 #[cfg(test)]
 mod tests {

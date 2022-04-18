@@ -1,19 +1,24 @@
-use cw721_base::{InstantiateMsg as Cw721InstantiateMsg};
-use crate::contract::{instantiate, execute, query, reply};
-use crate::contract::{MAX_TOKEN_LIMIT, MAX_TOKEN_PER_BATCH_LIMIT, INSTANTIATE_CW721_REPLY_ID};
+use crate::contract::{execute, instantiate, query, reply};
+use crate::contract::{INSTANTIATE_CW721_REPLY_ID, MAX_TOKEN_LIMIT, MAX_TOKEN_PER_BATCH_LIMIT};
 use crate::msg::{ConfigResponse, InstantiateMsg, QueryMsg};
+use cw721_base::InstantiateMsg as Cw721InstantiateMsg;
 
 #[cfg(test)]
 mod tests {
     // use std::ptr::null;
     use super::*;
-    use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies_with_balance, mock_env, mock_info};
-    use cosmwasm_std::{coins, SubMsgExecutionResponse, SubMsgResult, from_binary, SubMsg, WasmMsg, to_binary, ReplyOn, Reply, Addr};
+    use cosmwasm_std::testing::{
+        mock_dependencies_with_balance, mock_env, mock_info, MOCK_CONTRACT_ADDR,
+    };
+    use cosmwasm_std::{
+        coins, from_binary, to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse,
+        SubMsgResult, WasmMsg,
+    };
 
-    use prost::Message;
-    use crate::{Metadata};
     use crate::error::ContractError;
     use crate::msg::ExecuteMsg::{BatchMint, Mint, MintTo};
+    use crate::Metadata;
+    use prost::Message;
 
     // Type for replies to contract instantiate messes
     #[derive(Clone, PartialEq, Message)]
@@ -116,11 +121,13 @@ mod tests {
                         name: msg.name.clone(),
                         symbol: msg.symbol.clone(),
                         minter: MOCK_CONTRACT_ADDR.to_string(),
-                    }).unwrap(),
+                    })
+                    .unwrap(),
                     funds: vec![],
                     admin: Some(info.sender.to_string()),
                     label: String::from("Check CW721"),
-                }.into(),
+                }
+                .into(),
                 id: INSTANTIATE_CW721_REPLY_ID,
                 gas_limit: None,
                 reply_on: ReplyOn::Success,
@@ -139,22 +146,22 @@ mod tests {
                 max_tokens_per_mint: 10,
                 name: String::from("ARTAVERSER"),
                 symbol: String::from("ATA"),
-                base_token_uri: String::from("ipfs://Sdjbfsdkjfgbdkfjgbdsfgbkiufbguydfguybfsdfjkdnsk"),
-                extension: Some(
-                    Metadata
-                    {
-                        image: None,
-                        image_data: None,
-                        external_url: None,
-                        description: None,
-                        name: None,
-                        attributes: None,
-                        background_color: None,
-                        animation_url: None,
-                        youtube_url: None,
-                        royalty_percentage: Some(10),
-                        royalty_payment_address: Some(String::from("creator_address")),
-                    }),
+                base_token_uri: String::from(
+                    "ipfs://Sdjbfsdkjfgbdkfjgbdsfgbkiufbguydfguybfsdfjkdnsk"
+                ),
+                extension: Some(Metadata {
+                    image: None,
+                    image_data: None,
+                    external_url: None,
+                    description: None,
+                    name: None,
+                    attributes: None,
+                    background_color: None,
+                    animation_url: None,
+                    youtube_url: None,
+                    royalty_percentage: Some(10),
+                    royalty_payment_address: Some(String::from("creator_address")),
+                }),
             }
         );
     }
@@ -204,15 +211,13 @@ mod tests {
         reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
 
         // call mint NFT
-        let msg_mint = Mint {
-            token_id: 1
-        };
+        let msg_mint = Mint { token_id: 1 };
         let res_execute = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint);
         assert!(res_execute.is_ok());
 
         // call batch mint NFT
         let msg_mint = BatchMint {
-            token_ids: vec![2, 3, 4]
+            token_ids: vec![2, 3, 4],
         };
         let res_execute = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint);
         assert!(res_execute.is_ok());
@@ -228,21 +233,21 @@ mod tests {
 
         // token_id is zero returns error
         let msg_mint = BatchMint {
-            token_ids: vec![5, 6, 0]
+            token_ids: vec![5, 6, 0],
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint).unwrap_err();
         assert_eq!(err, ContractError::InvalidTokenId {});
 
         // token_id is over num tokens error
         let msg_mint = BatchMint {
-            token_ids: vec![5, 6, config.max_tokens + 1]
+            token_ids: vec![5, 6, config.max_tokens + 1],
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint).unwrap_err();
         assert_eq!(err, ContractError::InvalidTokenId {});
 
         //token_id not on mintable map
         let msg_mint = BatchMint {
-            token_ids: vec![1, 6, 7]
+            token_ids: vec![1, 6, 7],
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint).unwrap_err();
         assert_eq!(err, ContractError::TokenIdAlreadySold { token_id: 1 });
