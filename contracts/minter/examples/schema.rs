@@ -3,12 +3,12 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use artaverse_contracts::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use artaverse_contracts::state::State;
+use minter::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use minter::state::State;
 
 fn main() {
     let mut out_dir = current_dir().unwrap();
-    out_dir.push("../schema");
+    out_dir.push("schema");
     create_dir_all(&out_dir).unwrap();
     remove_schemas(&out_dir).unwrap();
 
@@ -16,5 +16,4 @@ fn main() {
     export_schema(&schema_for!(ExecuteMsg), &out_dir);
     export_schema(&schema_for!(QueryMsg), &out_dir);
     export_schema(&schema_for!(State), &out_dir);
-    export_schema(&schema_for!(CountResponse), &out_dir);
 }

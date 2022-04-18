@@ -1,7 +1,7 @@
 [package]
 name = "factory"
 version = "0.1.0"
-authors = ["Phan Văn Học <phanhocit@gmail.com>"]
+authors = ["ThienLK <thienlk0901@gmail.com>"]
 edition = "2018"
 
 exclude = [
@@ -47,6 +47,10 @@ cw2 = "0.13"
 schemars = "0.8"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0" }
+minter = { path = "../minter", features = ["library"] }
+cw721 = "0.12.0"
+cw721-base = { version = "0.12.0", features = ["library"] }
+cw-utils = "0.12.1"
 
 [dev-dependencies]
 cosmwasm-schema = { version = "1.0.0-beta6" }

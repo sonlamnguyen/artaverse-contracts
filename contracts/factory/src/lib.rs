@@ -1,7 +1,7 @@
 pub mod contract;
+#[cfg(test)]
+mod contract_tests;
 mod error;
-pub mod helpers;
-pub mod integration_tests;
 pub mod msg;
 pub mod state;
 
