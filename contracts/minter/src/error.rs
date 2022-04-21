@@ -13,9 +13,14 @@ pub enum ContractError {
     #[error("Custom Error val: {val:?}")]
     CustomError { val: String },
 
-    // Add any other custom errors you like here.
     #[error("InvalidNumTokens {max}, min: 1")]
     InvalidNumTokens { max: u32, min: u32 },
+
+    #[error("InvalidMaxTokensPerBatchMint {max}, min: 1")]
+    InvalidMaxTokensPerBatchMint { max: u32, min: u32 },
+
+    #[error("InvalidMaxTokensPerBatchTransfer {max}, min: 1")]
+    InvalidMaxTokensPerBatchTransfer { max: u32, min: u32 },
 
     #[error("Instantiate cw721 error")]
     InstantiateCW721Error {},

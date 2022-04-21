@@ -114,6 +114,7 @@ fn _execute_create_minter(
                 symbol: minter_instantiate_msg.symbol,
                 base_token_uri: minter_instantiate_msg.base_token_uri,
                 max_tokens_per_batch_mint: minter_instantiate_msg.max_tokens_per_batch_mint,
+                max_tokens_per_batch_transfer: minter_instantiate_msg.max_tokens_per_batch_transfer,
                 royalty_percentage: minter_instantiate_msg.royalty_percentage,
                 royalty_payment_address: minter_instantiate_msg.royalty_payment_address,
                 num_tokens: minter_instantiate_msg.num_tokens,

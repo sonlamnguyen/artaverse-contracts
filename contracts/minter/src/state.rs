@@ -10,6 +10,7 @@ pub struct Config {
     pub base_token_uri: String,
     pub max_tokens: u32,
     pub max_tokens_per_batch_mint: u32,
+    pub max_tokens_per_batch_transfer: u32,
     pub cw721_code_id: u64,
     pub cw721_address: Option<Addr>,
     pub name: String,

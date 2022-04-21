@@ -14,9 +14,10 @@ mod tests {
         coins, from_binary, to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse,
         SubMsgResult, WasmMsg,
     };
+    // use cw721_base::ExecuteMsg::TransferNft;
 
     use crate::error::ContractError;
-    use crate::msg::ExecuteMsg::{BatchMint, Mint, MintTo};
+    use crate::msg::ExecuteMsg::{BatchMint, BatchTransferNft, Mint, MintTo, TransferNft};
     use crate::Metadata;
     use prost::Message;
 
@@ -38,70 +39,148 @@ mod tests {
             base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
             num_tokens: 0,
             max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
-        instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidNumTokens {
+                max: MAX_TOKEN_LIMIT,
+                min: 1
+            }
+        );
 
         // num_token is over max token limit return error
         let msg = InstantiateMsg {
             base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
             num_tokens: MAX_TOKEN_LIMIT + 1,
             max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
-        instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidNumTokens {
+                max: MAX_TOKEN_LIMIT,
+                min: 1
+            }
+        );
 
-        // num_token is over max token limit return error
+        // max_tokens_per_batch_mint is over max token limit return error
         let msg = InstantiateMsg {
             base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
             num_tokens: 20,
             max_tokens_per_batch_mint: MAX_TOKEN_PER_BATCH_LIMIT + 1,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
-        instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidMaxTokensPerBatchMint {
+                max: MAX_TOKEN_PER_BATCH_LIMIT,
+                min: 1
+            }
+        );
 
         // max_tokens_per_batch_mint is zero returns error
         let msg = InstantiateMsg {
             base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
             num_tokens: 20,
             max_tokens_per_batch_mint: 0,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
-        instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidMaxTokensPerBatchMint {
+                max: MAX_TOKEN_PER_BATCH_LIMIT,
+                min: 1
+            }
+        );
+
+        // max_tokens_per_batch_transfer is over max token limit return error
+        let msg = InstantiateMsg {
+            base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
+            num_tokens: 20,
+            max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: MAX_TOKEN_PER_BATCH_LIMIT + 1,
+            cw721_code_id: 10u64,
+            name: String::from("ARTAVERSER"),
+            symbol: String::from("ATA"),
+            royalty_percentage: None,
+            royalty_payment_address: None,
+        };
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidMaxTokensPerBatchTransfer {
+                max: MAX_TOKEN_PER_BATCH_LIMIT,
+                min: 1
+            }
+        );
+
+        // max_tokens_per_batch_transfer is zero returns error
+        let msg = InstantiateMsg {
+            base_token_uri: String::from("ipfs://Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
+            num_tokens: 20,
+            max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 0,
+            cw721_code_id: 10u64,
+            name: String::from("ARTAVERSER"),
+            symbol: String::from("ATA"),
+            royalty_percentage: None,
+            royalty_payment_address: None,
+        };
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidMaxTokensPerBatchTransfer {
+                max: MAX_TOKEN_PER_BATCH_LIMIT,
+                min: 1
+            }
+        );
 
         // Invalid uri returns error
         let msg = InstantiateMsg {
             base_token_uri: String::from("Fhgihgkdfhgdfgdgdfgdfhfvbnykorkjojroiwoiwmgdmg"),
             num_tokens: 20,
             max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
             royalty_percentage: None,
             royalty_payment_address: None,
         };
-        instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        let err = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::InvalidBaseTokenURI {});
 
+        // success case
         let msg = InstantiateMsg {
             base_token_uri: String::from("ipfs://Sdjbfsdkjfgbdkfjgbdsfgbkiufbguydfguybfsdfjkdnsk"),
             num_tokens: 20,
             max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
@@ -144,6 +223,7 @@ mod tests {
                 cw721_address: None,
                 max_tokens: 20,
                 max_tokens_per_mint: 10,
+                max_tokens_per_batch_transfer: 10,
                 name: String::from("ARTAVERSER"),
                 symbol: String::from("ATA"),
                 base_token_uri: String::from(
@@ -167,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn mint_test() {
+    fn mint_transfer_test() {
         let mut deps = mock_dependencies_with_balance(&coins(2, "token"));
         let info = mock_info("creator", &coins(1000, "earth"));
         let buyer = Addr::unchecked("buyer");
@@ -175,6 +255,7 @@ mod tests {
             base_token_uri: String::from("ipfs://Sdjbfsdkjfgbdkfjgbdsfgbkiufbguydfguybfsdfjkdnsk"),
             num_tokens: 20,
             max_tokens_per_batch_mint: 10,
+            max_tokens_per_batch_transfer: 10,
             cw721_code_id: 10u64,
             name: String::from("ARTAVERSER"),
             symbol: String::from("ATA"),
@@ -251,5 +332,21 @@ mod tests {
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg_mint).unwrap_err();
         assert_eq!(err, ContractError::TokenIdAlreadySold { token_id: 1 });
+
+        // call transfer NFT
+        let msg_transfer = TransferNft {
+            recipient: buyer.to_string(),
+            token_id: 1,
+        };
+        let res_execute = execute(deps.as_mut(), mock_env(), info.clone(), msg_transfer);
+        assert!(res_execute.is_ok());
+
+        // call transfer NFT
+        let msg_transfer = BatchTransferNft {
+            recipient: buyer.to_string(),
+            token_ids: vec![2, 3],
+        };
+        let res_execute = execute(deps.as_mut(), mock_env(), info.clone(), msg_transfer);
+        assert!(res_execute.is_ok());
     }
 }
