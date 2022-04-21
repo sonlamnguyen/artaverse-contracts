@@ -13,13 +13,9 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     /// update code id of minter contract was stored
-    UpdateMinterCodeId {
-        minter_code_id: u64,
-    },
+    UpdateMinterCodeId { minter_code_id: u64 },
     /// update code id of cw721 contract was stored
-    UpdateCw721CodeId {
-        cw721_code_id: u64,
-    },
+    UpdateCw721CodeId { cw721_code_id: u64 },
     /// call minter contract to instantiate a minter contract
     CreateMinter {
         minter_instantiate_msg: CreateMinterInstantiateMsg,
