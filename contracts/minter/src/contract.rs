@@ -433,7 +433,7 @@ fn _execute_batch_transfer_nft(
     Ok(Response::new()
         .add_attribute("sender", info.sender)
         .add_attribute("recipient", recipient)
-        .add_attribute("token_id", transferred_token_ids_str.to_string())
+        .add_attribute("token_id", transferred_token_ids_str)
         .add_messages(msgs))
 }
 
