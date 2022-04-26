@@ -1,13 +1,13 @@
 use crate::error::ContractError;
-use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg, RoyaltiesInfoResponse};
 use crate::state::{Config, CONFIG, CW721_ADDRESS, MINTABLE_NUM_TOKENS, MINTABLE_TOKEN_IDS};
 use crate::{Deserialize, Serialize};
 use crate::{Extension, JsonSchema, Metadata};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Order, Reply,
-    ReplyOn, Response, StdResult, SubMsg, WasmMsg,
+    to_binary, Addr, Binary, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Order,
+    Reply, ReplyOn, Response, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw721_base::{ExecuteMsg as Cw721ExecuteMsg, InstantiateMsg as Cw721InstantiateMsg, MintMsg};
@@ -201,6 +201,7 @@ pub fn execute_batch_transfer_nft(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetConfig {} => to_binary(&query_config(deps)?),
+        QueryMsg::RoyaltyInfo { sale_price } => to_binary(&query_royalties_info(deps, sale_price)?),
         _ => Cw721ArtaverseContract::default().query(deps, env, msg.into()),
     }
 }
@@ -435,6 +436,28 @@ fn _execute_batch_transfer_nft(
         .add_attribute("recipient", recipient)
         .add_attribute("token_id", transferred_token_ids_str)
         .add_messages(msgs))
+}
+
+/// NOTE: default behaviour here is to round down
+/// EIP2981 specifies that the rounding behaviour is at the discretion of the implementer
+pub fn query_royalties_info(deps: Deps, sale_price: Uint128) -> StdResult<RoyaltiesInfoResponse> {
+    let config = CONFIG.load(deps.storage)?;
+
+    let royalty_percentage = match config.royalty_percentage {
+        Some(ref percentage) => Decimal::percent(*percentage),
+        None => Decimal::percent(0),
+    };
+    let royalty_from_sale_price = sale_price * royalty_percentage;
+
+    let royalty_address = match config.royalty_payment_address {
+        Some(addr) => addr,
+        None => String::from(""),
+    };
+
+    Ok(RoyaltiesInfoResponse {
+        royalty_address,
+        royalty_amount: royalty_from_sale_price,
+    })
 }
 
 // Reply callback triggered from cw721 contract instantiation
