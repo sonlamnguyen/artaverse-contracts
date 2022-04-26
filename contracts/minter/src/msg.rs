@@ -1,4 +1,4 @@
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +50,10 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
+    /// Return config info set in Instantiate
     GetConfig {},
+    ///Return royalty info include Royalty address and the royalty fee must be pay.
+    RoyaltyInfo { sale_price: Uint128 },
     /// Return the owner of the given token, error if token does not exist
     /// Return type: OwnerOfResponse
     OwnerOf {
@@ -76,9 +79,7 @@ pub enum QueryMsg {
     /// With MetaData Extension.
     /// Returns metadata about one particular token, based on *ERC721 Metadata JSON Schema*
     /// but directly from the contract: `NftInfoResponse`
-    NftInfo {
-        token_id: String,
-    },
+    NftInfo { token_id: String },
     /// With MetaData Extension.
     /// Returns the result of both `NftInfo` and `OwnerOf` as one query as an optimization
     /// for clients: `AllNftInfo`
@@ -166,4 +167,18 @@ pub struct ConfigResponse {
     pub symbol: String,
     pub base_token_uri: String,
     pub extension: Extension,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct RoyaltiesInfoResponse {
+    pub royalty_address: String,
+    // Note that this must be the same denom as that passed in to RoyaltyInfo
+    // rounding up or down is at the discretion of the implementer
+    pub royalty_amount: Uint128,
+}
+
+/// Shows if the contract implements royalties
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct CheckRoyaltiesResponse {
+    pub royalty_payments: bool,
 }

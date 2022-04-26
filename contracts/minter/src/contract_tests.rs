@@ -12,12 +12,13 @@ mod tests {
     };
     use cosmwasm_std::{
         coins, from_binary, to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse,
-        SubMsgResult, WasmMsg,
+        SubMsgResult, Uint128, WasmMsg,
     };
     // use cw721_base::ExecuteMsg::TransferNft;
 
     use crate::error::ContractError;
     use crate::msg::ExecuteMsg::{BatchMint, BatchTransferNft, Mint, MintTo, TransferNft};
+    use crate::msg::RoyaltiesInfoResponse;
     use crate::Metadata;
     use prost::Message;
 
@@ -244,6 +245,21 @@ mod tests {
                 }),
             }
         );
+
+        // check query royalties info
+        let query_msg = QueryMsg::RoyaltyInfo {
+            sale_price: Uint128::from(200u128),
+        };
+        let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
+        let info: RoyaltiesInfoResponse = from_binary(&res).unwrap();
+
+        assert_eq!(
+            info,
+            RoyaltiesInfoResponse {
+                royalty_address: "creator_address".to_string(),
+                royalty_amount: Uint128::from(200u128 * 10 / 100)
+            }
+        );
     }
 
     #[test]
@@ -266,6 +282,7 @@ mod tests {
         let res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone());
         assert!(res.is_ok());
 
+        // check query config
         let query_msg = QueryMsg::GetConfig {};
         let res = query(deps.as_ref(), mock_env(), query_msg).unwrap();
         let config: ConfigResponse = from_binary(&res).unwrap();
